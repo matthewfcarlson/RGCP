@@ -16,7 +16,10 @@ AudioControlSGTL5000     sgtl5000_1;
 
 //GPS stuff -use Serial 2
 #define GPS_RX      9
-#define GPS_SERIAL Serial2
+//#define GPS_SERIAL Serial2
+HardwareSerial GPS_SERIAL = Serial2;
+Adafruit_GPS GPS(&GPS_SERIAL);
+
 //Screen stuff
 #define TFT_DC      20
 #define TFT_CS      21
@@ -29,7 +32,8 @@ ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_MIS
 
 void setup() {
   // put your setup code here, to run once:
-  
+  GPS.begin(9600);
+  GPS_SERIAL.begin(9600);
 }
 
 void setupTFT()
