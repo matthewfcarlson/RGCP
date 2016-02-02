@@ -21,7 +21,7 @@ AudioControlSGTL5000     sgtl5000_1;
 //GPS stuff -use Serial 2
 //#define GPS_SERIAL Serial2
 HardwareSerial GPS_SERIAL = HardwareSerial();
-TinyGPS gps();
+TinyGPS gps;
 
 //Screen stuff
 #define TFT_DC      20
@@ -32,12 +32,14 @@ TinyGPS gps();
 #define TFT_MISO    12
 ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_MISO);
 
+void gpsdump(TinyGPS &gps);
+void printFloat(double f, int digits = 2);
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
   GPS_SERIAL.begin(9600);
-  dleay(1000);
+  delay(1000);
 }
 
 void setupTFT()
@@ -58,8 +60,8 @@ void loop() {
 
   // Every 5 seconds we print an update
   while (millis() - start < 5000) {
-    if (Uart.available()) {
-      char c = Uart.read();
+    if (GPS_SERIAL.available()) {
+      char c = GPS_SERIAL.read();
       // Serial.print(c);  // uncomment to see raw GPS data
       if (gps.encode(c)) {
         newdata = true;
