@@ -7,12 +7,18 @@
 #include <SerialFlash.h>
 #include <TinyGPS.h>
 
+struct location{
+  long lat;
+  long lon;
+};
+
 //TODO increase RX UART buffer size 
 //hardware/teensy/cores/teensy/HardwareSerial.cpp
 //https://www.pjrc.com/teensy/td_libs_TinyGPS.html
 
 //State varaibles
-enum currentPuzzle {PUZZLE_WAIT, PUZZLE_ICE, PUZZLE_COCO, PUZZLE_SLAB, PUZZLE_DITTO};
+enum CurrentPuzzle {PUZZLE_WAIT, PUZZLE_ICE, PUZZLE_COCO, PUZZLE_SLAB, PUZZLE_DITTO};
+CurrentPuzzle cp = PUZZLE_WAIT;
 
 //AUDIO stuff
 AudioPlaySdWav           playSdWav1;     //xy=301,216
