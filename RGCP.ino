@@ -7,11 +7,6 @@
 #include <SerialFlash.h>
 #include <TinyGPS.h>
 
-struct location{
-  long lat;
-  long lon;
-};
-
 //TODO increase RX UART buffer size 
 //hardware/teensy/cores/teensy/HardwareSerial.cpp
 //https://www.pjrc.com/teensy/td_libs_TinyGPS.html
@@ -38,6 +33,23 @@ TinyGPS gps;
 #define TFT_MISO    12
 ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_MISO);
 
+
+//EEPROM
+#define DATA_YEAR
+#define DATA_MONTH
+#define DATA_DAY
+
+#define DATA_HOUR
+#define DATA_MINUTE
+
+#define PUZZLE STATE;
+
+//Time keeping
+unsigned minute = 0;
+unsigned hour = 0;
+unsigned day = 0;
+unsigned month = 0;
+unsigned year = 0;
 void gpsdump(TinyGPS &gps);
 void printFloat(double f, int digits = 2);
 
@@ -45,44 +57,63 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
   GPS_SERIAL.begin(9600);
+  setupTFT();
+
+  pinMode(3, INPUT_PULLUP);
+  pinMode(2, INPUT_PULLUP);
+  
   delay(1000);
+
 }
 
 void setupTFT()
 {
   tft.begin();
+  tft.setRotation(3);
   tft.fillScreen(ILI9341_BLACK);
   tft.setTextColor(ILI9341_WHITE);
-  tft.setFont(Arial_24);
+  tft.setFont(Arial_12);
   //tft.setTextSize(3);
-  //tft.setCursor(40, 8);
-  //tft.println("Peak Meter");
+  tft.setCursor(40, 8);
+  tft.println("Peak Meter");
+}
+
+bool newGPSData = false;
+
+void updateGPSData(){
+  static int updateCount = 0;
+  while (GPS_SERIAL.available()) {
+      char c = GPS_SERIAL.read();
+      //Serial.print(c);  // uncomment to see raw GPS data
+      
+      if (gps.encode(c)) {
+        updateCount++;
+        if (updateCount > 5){
+          newGPSData = true;
+          updateCount = 0;
+        }
+      }
+    }
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  bool newdata = false;
+ 
   unsigned long start = millis();
 
-  // Every 5 seconds we print an update
-  while (millis() - start < 5000) {
-    if (GPS_SERIAL.available()) {
-      char c = GPS_SERIAL.read();
-      // Serial.print(c);  // uncomment to see raw GPS data
-      if (gps.encode(c)) {
-        newdata = true;
-        // break;  // uncomment to print new data immediately!
-      }
-    }
-  }
+  //if (millis() - start > 5000) 
+    updateGPSData(); //Must be called every .13 seconds
   
-  if (newdata) {
+  if (newGPSData) {
     Serial.println("Acquired Data");
     Serial.println("-------------");
     gpsdump(gps);
     Serial.println("-------------");
     Serial.println();
+   
+    newGPSData = false;
   }
+  delay(50);
 }
 void gpsdump(TinyGPS &gps)
 {
@@ -101,6 +132,14 @@ void gpsdump(TinyGPS &gps)
   // On Teensy, Serial prints to USB, which has large output buffering and
   //   runs very fast, so it's not necessary to worry about missing 4800
   //   baud GPS characters.
+  tft.fillScreen(ILI9341_BLACK);
+   tft.setCursor(40, 8);
+   tft.println("Location: ");
+   tft.setCursor(80, 80);
+   tft.println(String(lat));
+   tft.setCursor(100, 100);
+   tft.println(lon);
+
 
   gps.f_get_position(&flat, &flon, &age);
   Serial.print("Lat/Long(float): "); printFloat(flat, 5); Serial.print(", "); printFloat(flon, 5);
@@ -165,3 +204,4 @@ void printFloat(double number, int digits)
     remainder -= toPrint;
   }
 }
+
