@@ -1,28 +1,30 @@
+#include <Servo.h>
 #include <ILI9341_t3.h>
 #include <font_Arial.h> // from ILI9341_t3
 #include <Audio.h>
 #include <Wire.h>
 #include <SPI.h>
+#include <math.h>
 #include <SD.h>
 #include <SerialFlash.h>
 #include <TinyGPS.h>
 
-//TODO increase RX UART buffer size 
-//hardware/teensy/cores/teensy/HardwareSerial.cpp
-//https://www.pjrc.com/teensy/td_libs_TinyGPS.html
-
 //State varaibles
-enum CurrentPuzzle {PUZZLE_WAIT, PUZZLE_ICE, PUZZLE_COCO, PUZZLE_SLAB, PUZZLE_DITTO};
-CurrentPuzzle cp = PUZZLE_WAIT;
+int CurrentPuzzle = 0;
+
 
 //AUDIO stuff
 AudioPlaySdWav           playSdWav1;     //xy=301,216
 AudioControlSGTL5000     sgtl5000_1;
 
 //GPS stuff -use Serial 2
-//#define GPS_SERIAL Serial2
 HardwareSerial GPS_SERIAL = HardwareSerial();
 TinyGPS gps;
+const float deg2rad = 0.01745329251994;
+const float rEarth  = 6371000.0;
+float range = 2000;
+boolean gpsHasFix = false;
+
 
 //Screen stuff
 #define TFT_DC      20
@@ -33,16 +35,20 @@ TinyGPS gps;
 #define TFT_MISO    12
 ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_MISO);
 
+//SERVO stuff
+Servo latchServo;   // create servo object to control a servo 
+int   latchPos = 0; // variable to store the servo position 
+#define SERVO_CONTROL 4
+#define SERVO_ONOFF   3
 
 //EEPROM
-#define DATA_YEAR
-#define DATA_MONTH
-#define DATA_DAY
+#define DATA_YEAR 1
+#define DATA_MONTH 2
+#define DATA_DAY 3
 
-#define DATA_HOUR
-#define DATA_MINUTE
+#define DATA_HOUR 4
+#define DATA_MINUTE 5
 
-#define PUZZLE STATE;
 
 //Time keeping
 unsigned minute = 0;
@@ -53,11 +59,27 @@ unsigned year = 0;
 void gpsdump(TinyGPS &gps);
 void printFloat(double f, int digits = 2);
 
+
+//The objectives
+struct Puzzle{
+  long lat;
+  long lon;
+  String location;
+}
+#define NUM_PUZZLES 3
+int hintsUsed = 0;
+#define NUM_HINTS = 
+struct Puzzle puzzles[NUM_PUZZLES];
+
+
 void setup() {
+  puzzles[0].lat = 0.0;
   // put your setup code here, to run once:
   Serial.begin(115200);
   GPS_SERIAL.begin(9600);
   setupTFT();
+
+  latchServo.attach(SERVO_CONTROL);  // attaches the servo
 
   pinMode(3, INPUT_PULLUP);
   pinMode(2, INPUT_PULLUP);
@@ -203,5 +225,12 @@ void printFloat(double number, int digits)
     Serial.print(toPrint);
     remainder -= toPrint;
   }
+}
+
+//Calculates the distance to the point
+float distanceTo(float lat1, float lon1, float lat2, float long2){
+  float h = sq((sin(lat1-lat2) /2.0))) + (cost(lat1) * cos(lat2) * sq((sin((lon1 - lon2) /2.0))))
+  float d = 2.0 * rEarth * asin (sqrt(h));
+  return d;
 }
 
