@@ -1,3 +1,4 @@
+#include <Snooze.h>
 #include <Servo.h>
 #include <ILI9341_t3.h>
 #include <font_Arial.h> // from ILI9341_t3
@@ -64,8 +65,8 @@ void printFloat(double f, int digits = 2);
 struct Puzzle{
   long lat;
   long lon;
-  String location;
-}
+  String des;
+} Puzzle;
 #define NUM_PUZZLES 3
 int hintsUsed = 0;
 #define NUM_HINTS = 
@@ -73,7 +74,21 @@ struct Puzzle puzzles[NUM_PUZZLES];
 
 
 void setup() {
+  //FIRST PUZZLE
   puzzles[0].lat = 0.0;
+  puzzles[0].lon = 0.0;
+  puzzles[0].des = "Cocoa Bean";
+
+  //SECOND PUZZLE
+  puzzles[1].lat = 0.0;
+  puzzles[1].lon = 0.0;
+  puzzles[1].des = "Cocoa Bean 2";
+
+  //SECOND PUZZLE
+  puzzles[1].lat = 0.0;
+  puzzles[1].lon = 0.0;
+  puzzles[1].des = "Cocoa Bean 3";
+  
   // put your setup code here, to run once:
   Serial.begin(115200);
   GPS_SERIAL.begin(9600);
@@ -228,9 +243,26 @@ void printFloat(double number, int digits)
 }
 
 //Calculates the distance to the point
-float distanceTo(float lat1, float lon1, float lat2, float long2){
-  float h = sq((sin(lat1-lat2) /2.0))) + (cost(lat1) * cos(lat2) * sq((sin((lon1 - lon2) /2.0))))
+float distanceFromTo(float lat1, float lon1, float lat2, float lon2){
+  float h = sq((sin(lat1-lat2) /2.0)) + (cos(lat1) * cos(lat2) * sq((sin((lon1 - lon2) /2.0))));
   float d = 2.0 * rEarth * asin (sqrt(h));
   return d;
+}
+
+//Calculates the direction from (lat1, lon1) to (lat2, lon2)
+String directionFromTo(float lat1, float lon1, float lat2, float lon2){
+  if (lat2 > lat1){ //North
+    if (lon2 > lon1) //EAST
+      return "NE";
+    else
+      return "NW";
+  }
+  else{ //South
+    if (lon2 > lon1) //EAST
+      return "SE";
+    else
+      return "SW";
+    
+  }
 }
 
