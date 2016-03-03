@@ -1,4 +1,5 @@
 #include <Snooze.h>
+#include <EEPROM.h>
 #include <Servo.h>
 #include <ILI9341_t3.h>
 #include <font_Arial.h> // from ILI9341_t3
@@ -8,22 +9,19 @@
 #include <math.h>
 #include <SD.h>
 #include <SerialFlash.h>
-#include <TinyGPS.h>
-
-//State varaibles
-int CurrentPuzzle = 0;
+#include <TinyGPS++.h>
 
 
 //AUDIO stuff
 AudioPlaySdWav           playSdWav1;     //xy=301,216
 AudioControlSGTL5000     sgtl5000_1;
 
-//GPS stuff -use Serial 2
+//GPS stuff
 HardwareSerial GPS_SERIAL = HardwareSerial();
-TinyGPS gps;
+TinyGPSPlus gps;
 const float deg2rad = 0.01745329251994;
-const float rEarth  = 6371000.0;
-float range = 2000;
+const float rEarth = 20902200; //set for feet 6371000.0 meters, 3958.75 mi, 6370.0 km, or 3440.06 NM
+float range = 50;   // distance from HERE to THERE
 boolean gpsHasFix = false;
 
 
@@ -34,13 +32,20 @@ boolean gpsHasFix = false;
 #define TFT_MOSI     7
 #define TFT_SCLK    14
 #define TFT_MISO    12
+#define TFT_LED      6
 ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_MISO);
 
 //SERVO stuff
 Servo latchServo;   // create servo object to control a servo 
-int   latchPos = 0; // variable to store the servo position 
+int   latchPos  = 0; // variable to store the servo position 
 #define SERVO_CONTROL 4
 #define SERVO_ONOFF   3
+
+//Front button
+#define HINT_BTN   5
+
+//Sleeping configuartion
+SnoozeBlock sleepconfig;
 
 //EEPROM
 #define DATA_YEAR 1
@@ -57,19 +62,23 @@ unsigned hour = 0;
 unsigned day = 0;
 unsigned month = 0;
 unsigned year = 0;
-void gpsdump(TinyGPS &gps);
 void printFloat(double f, int digits = 2);
 
 
 //The objectives
 struct Puzzle{
-  long lat;
-  long lon;
+  double lat;
+  double lon;
   String des;
 } Puzzle;
-#define NUM_PUZZLES 3
+
+#define PUZZLE_ADDR 42
+#define HINT_ADDR 24
+
 int hintsUsed = 0;
-#define NUM_HINTS = 
+int currentPuzzle = 0;
+#define NUM_HINTS  50
+#define NUM_PUZZLES 3
 struct Puzzle puzzles[NUM_PUZZLES];
 
 
@@ -92,16 +101,30 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
   GPS_SERIAL.begin(9600);
+  Serial.print("Starting up!");
   setupTFT();
 
   latchServo.attach(SERVO_CONTROL);  // attaches the servo
+  unlock();
 
   pinMode(3, INPUT_PULLUP);
   pinMode(2, INPUT_PULLUP);
+  pinMode(TFT_LED, OUTPUT);
+  sleepconfig.pinMode(HINT_BTN, INPUT_PULLUP, RISING);//pin, mode, type
+
+
+  currentPuzzle = EEPROM.read(PUZZLE_ADDR);
+  hintsUsed = EEPROM.read(HINT_ADDR);
+  delay(5000);
+  lock();
   
-  delay(1000);
+  Snooze.sleep( sleepconfig );
+
 
 }
+
+bool newGPSData = false;
+
 
 void setupTFT()
 {
@@ -114,9 +137,163 @@ void setupTFT()
   tft.setCursor(40, 8);
   tft.println("Peak Meter");
 }
+double targetLat = 0;
+double targetLng = 0;
+double distanceMeters = 0;
+double courseTo = 0;
+unsigned long start = 0;
 
-bool newGPSData = false;
+String direction = "N/A";
+//Loop assumes it just woke up
+void loop() {
+  //We just woke up - make sure to refresh our GPS fix
+  gpsHasFix = false;
+  newGPSData = false;
+  Serial.print("Time since GPS last update:");
+  Serial.println(gps.location.age());
+  //Get new GPS data
+  while (!newGPSData){
+    updateGPSData(); 
+    //Check if our fix is valid
+    if (newGPSData){
+      gpsHasFix = true;
+      
+    }
+  }
 
+  while (!gpsHasFix){
+    updateGPSData(); 
+    
+  }
+
+  targetLat = puzzles[currentPuzzle].lat;
+  targetLng = puzzles[currentPuzzle].lon;
+
+  distanceMeters =
+  TinyGPSPlus::distanceBetween(
+    gps.location.lat(),
+    gps.location.lng(),
+    targetLat,
+    targetLng);
+    
+  courseTo =
+  TinyGPSPlus::courseTo(
+    gps.location.lat(),
+    gps.location.lng(),
+    targetLat,
+    targetLng);
+
+  direction = TinyGPSPlus::cardinal(courseTo);
+
+
+
+
+  //Turn on the screen
+  digitalWrite(TFT_LED, HIGH);
+  start = millis();
+
+  //if we are in range of the target
+  if (distanceMeters <= range){
+    //advance to next winner
+    if (currentPuzzle >= NUM_PUZZLES){
+      //Show winner on screen
+      //play sound
+      delay(200);
+      unlock();
+    }
+    else{
+      currentPuzzle ++;
+      
+    }
+    
+  }
+  else{ //use a hint
+    hintsUsed++;
+    displayHintInfo(distanceMeters, direction);
+    //Show the hint
+  }
+
+  //update the screen
+  displayGPSInfo();
+
+  Serial.println("Acquired Data");
+  Serial.println("-------------");
+  //gpsdump(gps);
+  Serial.println("-------------");
+  Serial.println();
+
+  //wait for 5 seconds
+  delay(5000);
+
+  //turn of screen backlight
+  digitalWrite(TFT_LED, LOW);
+  //go back to sleep
+  Snooze.sleep( sleepconfig );
+}
+
+void displayGPSInfo(){
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setCursor(0, 0);
+  tft.println("Latitude");
+  tft.setCursor(40, 40);
+  tft.println(gps.location.lat());
+  tft.setCursor(80, 80);
+  tft.println("Longitude");
+  tft.setCursor(80, 80);
+  tft.println(gps.location.lng());
+}
+
+void displayHintInfo(double distance, String direction){
+  /*tft.fillScreen(ILI9341_BLACK);
+  tft.setCursor(0, 0);
+  tft.println("Latitude");
+  tft.setCursor(40, 40);
+  tft.println(currentPuzzle);
+  tft.setCursor(80, 80);
+  tft.println("Longitude");
+  tft.setCursor(80, 80);
+  tft.println(gps.location.lng());*/
+}
+
+void unlock(){
+  latchServo.write(0);
+}
+void lock(){
+  latchServo.write(180);
+}
+/*
+Serial.println(gps.location.lat(), 6); // Latitude in degrees (double)
+Serial.println(gps.location.lng(), 6); // Longitude in degrees (double)
+Serial.print(gps.location.rawLat().negative ? "-" : "+");
+Serial.println(gps.location.rawLat().deg); // Raw latitude in whole degrees
+Serial.println(gps.location.rawLat().billionths);// ... and billionths (u16/u32)
+Serial.print(gps.location.rawLng().negative ? "-" : "+");
+Serial.println(gps.location.rawLng().deg); // Raw longitude in whole degrees
+Serial.println(gps.location.rawLng().billionths);// ... and billionths (u16/u32)
+Serial.println(gps.date.value()); // Raw date in DDMMYY format (u32)
+Serial.println(gps.date.year()); // Year (2000+) (u16)
+Serial.println(gps.date.month()); // Month (1-12) (u8)
+Serial.println(gps.date.day()); // Day (1-31) (u8)
+Serial.println(gps.time.value()); // Raw time in HHMMSSCC format (u32)
+Serial.println(gps.time.hour()); // Hour (0-23) (u8)
+Serial.println(gps.time.minute()); // Minute (0-59) (u8)
+Serial.println(gps.time.second()); // Second (0-59) (u8)
+Serial.println(gps.time.centisecond()); // 100ths of a second (0-99) (u8)
+Serial.println(gps.speed.value()); // Raw speed in 100ths of a knot (i32)
+Serial.println(gps.speed.knots()); // Speed in knots (double)
+Serial.println(gps.speed.mph()); // Speed in miles per hour (double)
+Serial.println(gps.speed.mps()); // Speed in meters per second (double)
+Serial.println(gps.speed.kmph()); // Speed in kilometers per hour (double)
+Serial.println(gps.course.value()); // Raw course in 100ths of a degree (i32)
+Serial.println(gps.course.deg()); // Course in degrees (double)
+Serial.println(gps.altitude.value()); // Raw altitude in centimeters (i32)
+Serial.println(gps.altitude.meters()); // Altitude in meters (double)
+Serial.println(gps.altitude.miles()); // Altitude in miles (double)
+Serial.println(gps.altitude.kilometers()); // Altitude in kilometers (double)
+Serial.println(gps.altitude.feet()); // Altitude in feet (double)
+Serial.println(gps.satellites.value()); // Number of satellites in use (u32)
+Serial.println(gps.hdop.value()); // Horizontal Dim. of Precision (100ths-i32)
+ */
 void updateGPSData(){
   static int updateCount = 0;
   while (GPS_SERIAL.available()) {
@@ -131,126 +308,21 @@ void updateGPSData(){
         }
       }
     }
-}
-
-void loop() {
-  // put your main code here, to run repeatedly:
- 
-  unsigned long start = millis();
-
-  //if (millis() - start > 5000) 
-    updateGPSData(); //Must be called every .13 seconds
-  
-  if (newGPSData) {
-    Serial.println("Acquired Data");
-    Serial.println("-------------");
-    gpsdump(gps);
-    Serial.println("-------------");
-    Serial.println();
-   
-    newGPSData = false;
-  }
-  delay(50);
-}
-void gpsdump(TinyGPS &gps)
-{
-  long lat, lon;
-  float flat, flon;
-  unsigned long age, date, time, chars;
-  int year;
-  byte month, day, hour, minute, second, hundredths;
-  unsigned short sentences, failed;
-
-  gps.get_position(&lat, &lon, &age);
-  Serial.print("Lat/Long(10^-5 deg): "); Serial.print(lat); Serial.print(", "); Serial.print(lon); 
-  Serial.print(" Fix age: "); Serial.print(age); Serial.println("ms.");
-  
-  // On Arduino, GPS characters may be lost during lengthy Serial.print()
-  // On Teensy, Serial prints to USB, which has large output buffering and
-  //   runs very fast, so it's not necessary to worry about missing 4800
-  //   baud GPS characters.
-  tft.fillScreen(ILI9341_BLACK);
-   tft.setCursor(40, 8);
-   tft.println("Location: ");
-   tft.setCursor(80, 80);
-   tft.println(String(lat));
-   tft.setCursor(100, 100);
-   tft.println(lon);
-
-
-  gps.f_get_position(&flat, &flon, &age);
-  Serial.print("Lat/Long(float): "); printFloat(flat, 5); Serial.print(", "); printFloat(flon, 5);
-  Serial.print(" Fix age: "); Serial.print(age); Serial.println("ms.");
-
-  gps.get_datetime(&date, &time, &age);
-  Serial.print("Date(ddmmyy): "); Serial.print(date); Serial.print(" Time(hhmmsscc): ");
-    Serial.print(time);
-  Serial.print(" Fix age: "); Serial.print(age); Serial.println("ms.");
-
-  gps.crack_datetime(&year, &month, &day, &hour, &minute, &second, &hundredths, &age);
-  Serial.print("Date: "); Serial.print(static_cast<int>(month)); Serial.print("/"); 
-    Serial.print(static_cast<int>(day)); Serial.print("/"); Serial.print(year);
-  Serial.print("  Time: "); Serial.print(static_cast<int>(hour)); Serial.print(":"); 
-    Serial.print(static_cast<int>(minute)); Serial.print(":"); Serial.print(static_cast<int>(second));
-    Serial.print("."); Serial.print(static_cast<int>(hundredths));
-  Serial.print("  Fix age: ");  Serial.print(age); Serial.println("ms.");
-
-  Serial.print("Alt(cm): "); Serial.print(gps.altitude()); Serial.print(" Course(10^-2 deg): ");
-    Serial.print(gps.course()); Serial.print(" Speed(10^-2 knots): "); Serial.println(gps.speed());
-  Serial.print("Alt(float): "); printFloat(gps.f_altitude()); Serial.print(" Course(float): ");
-    printFloat(gps.f_course()); Serial.println();
-  Serial.print("Speed(knots): "); printFloat(gps.f_speed_knots()); Serial.print(" (mph): ");
-    printFloat(gps.f_speed_mph());
-  Serial.print(" (mps): "); printFloat(gps.f_speed_mps()); Serial.print(" (kmph): ");
-    printFloat(gps.f_speed_kmph()); Serial.println();
-
-  gps.stats(&chars, &sentences, &failed);
-  Serial.print("Stats: characters: "); Serial.print(chars); Serial.print(" sentences: ");
-    Serial.print(sentences); Serial.print(" failed checksum: "); Serial.println(failed);
-}
-
-void printFloat(double number, int digits)
-{
-  // Handle negative numbers
-  if (number < 0.0) {
-     Serial.print('-');
-     number = -number;
-  }
-
-  // Round correctly so that print(1.999, 2) prints as "2.00"
-  double rounding = 0.5;
-  for (uint8_t i=0; i<digits; ++i)
-    rounding /= 10.0;
-  
-  number += rounding;
-
-  // Extract the integer part of the number and print it
-  unsigned long int_part = (unsigned long)number;
-  double remainder = number - (double)int_part;
-  Serial.print(int_part);
-
-  // Print the decimal point, but only if there are digits beyond
-  if (digits > 0)
-    Serial.print("."); 
-
-  // Extract digits from the remainder one at a time
-  while (digits-- > 0) {
-    remainder *= 10.0;
-    int toPrint = int(remainder);
-    Serial.print(toPrint);
-    remainder -= toPrint;
-  }
+    
 }
 
 //Calculates the distance to the point
-float distanceFromTo(float lat1, float lon1, float lat2, float lon2){
-  float h = sq((sin(lat1-lat2) /2.0)) + (cos(lat1) * cos(lat2) * sq((sin((lon1 - lon2) /2.0))));
-  float d = 2.0 * rEarth * asin (sqrt(h));
+float distanceFromTo(double lat1, double lon1, double lat2, double lon2){
+  // returns the great-circle distance between two points (radians) on a sphere
+  float h = sq((sin((lat1 - lat2) / 2.0))) + (cos(lat1) * cos(lat2) * sq((sin((lon1 - lon2) / 2.0))));
+  float d = 2.0 * rEarth * asin (sqrt(h)); 
+  //Serial.println(d);
   return d;
+  
 }
 
 //Calculates the direction from (lat1, lon1) to (lat2, lon2)
-String directionFromTo(float lat1, float lon1, float lat2, float lon2){
+String directionFromTo(double lat1, double lon1, double lat2, double lon2){
   if (lat2 > lat1){ //North
     if (lon2 > lon1) //EAST
       return "NE";
