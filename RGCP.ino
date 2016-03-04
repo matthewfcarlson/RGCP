@@ -179,17 +179,18 @@ void loop() {
 
   digitalWrite(TFT_LED, LOW);
 
-  while (digitalRead(HINT_BTN) == HIGH && digitalRead(UNLOCK_SWITCH) == HIGH) {
+  while (digitalRead(HINT_BTN) == HIGH) {
     delay(50); // we must call check every .13 seconds
     checkGPSData();
-  }
-
-  if (digitalRead(UNLOCK_SWITCH) == LOW){
-    delay(50);
-    if (digitalRead(UNLOCK_SWITCH) == LOW) {
-      unlock();
+    if (digitalRead(UNLOCK_SWITCH) == LOW){
+      delay(50);
+      if (digitalRead(UNLOCK_SWITCH) == LOW) {
+        unlock();
+      }
     }
   }
+
+  //Start up loop again
   
   gpsHasFix = false;
   newGPSData = false;
@@ -200,7 +201,7 @@ void loop() {
   }
 
 
-
+  //Get the current coordinates
   targetLat = puzzles[currentPuzzle].lat;
   targetLng = puzzles[currentPuzzle].lon;
   range = puzzles[currentPuzzle].range;
@@ -221,6 +222,7 @@ void loop() {
 
   direction = TinyGPSPlus::cardinal(courseTo);
 
+  //Show the puzzle screen if this is the first time they've pressed the button
   if (firstTime){
     displayPuzzleNew();
     firstTime = false;
@@ -425,6 +427,9 @@ void unlock() {
 void lock() {
   digitalWrite(SERVO_ON, HIGH);
   latchServo.write(0);
+  delay(1000);
+   
+  digitalWrite(SERVO_ON,LOW);
 }
 /*
 Updates the GPS Data
