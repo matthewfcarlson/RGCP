@@ -75,15 +75,22 @@ struct Puzzle {
 #define PUZZLE_ADDR 42
 #define HINT_ADDR 24
 
+bool newGPSData = false;
+
+
 int hintsUsed = 0;
 int currentPuzzle = 0;
+
+//TAYLOR THIS IS THE STUFF YOU WANT TO MODIFY
 #define NUM_HINTS  50
 #define NUM_PUZZLES 4
+//HEAD TO THE NEXT INSTRUCTION
+
 struct Puzzle puzzles[NUM_PUZZLES];
 
-bool newGPSData = false;
-void setup() {
 
+void setup() {
+  //TAYLOR START HERE AGAIN
   //FIRST PUZZLE 40.245026, -111.646285
   puzzles[0].lat = 40.245026;
   puzzles[0].lon = -111.646285;
@@ -109,18 +116,21 @@ void setup() {
   puzzles[3].lon = -111.637950;
   puzzles[3].lat = 40.1874215;
   puzzles[3].lon = -111.6399565;
-  
+
   puzzles[3].des = "Random place";
   puzzles[3].range = 50000;//RANGE;
 
-  // put your setup code here, to run once:
+  //YOU'RE GOOD NOW
+
   Serial.begin(115200);
   GPS_SERIAL.begin(9600);
   Serial.print("Starting up!");
   setupTFT();
 
-  latchServo.attach(SERVO_CONTROL);  // attaches the servo
-  unlock();
+  //RESTORE STATE
+  currentPuzzle = EEPROM.read(PUZZLE_ADDR);
+  hintsUsed = EEPROM.read(HINT_ADDR);
+
 
   pinMode(HINT_BTN, INPUT_PULLUP);
   pinMode(UNLOCK_SWITCH, INPUT_PULLUP);
@@ -129,10 +139,12 @@ void setup() {
   digitalWrite(TFT_LED, HIGH);
   digitalWrite(SERVO_ON, LOW);
 
+  latchServo.attach(SERVO_CONTROL);  // attaches the servo
+
 
   displayGPSWait();
-  
-  
+
+
   while (!newGPSData) {
     updateGPSData();
     //Check if our fix is valid
@@ -182,16 +194,27 @@ void loop() {
   while (digitalRead(HINT_BTN) == HIGH) {
     delay(50); // we must call check every .13 seconds
     checkGPSData();
-    if (digitalRead(UNLOCK_SWITCH) == LOW){
+    if (digitalRead(UNLOCK_SWITCH) == LOW) {
       delay(50);
       if (digitalRead(UNLOCK_SWITCH) == LOW) {
-        unlock();
+        currentPuzzle ++;
+        //check if we are done
+        if (currentPuzzle >= NUM_PUZZLES) {
+          displayWinner();
+          delay(3000);
+          unlock();
+          while(1);
+        }
+        else {
+          displayPuzzleNew();
+        }
+        delay(2000);
       }
     }
   }
 
   //Start up loop again
-  
+
   gpsHasFix = false;
   newGPSData = false;
   //Get new GPS data
@@ -223,7 +246,7 @@ void loop() {
   direction = TinyGPSPlus::cardinal(courseTo);
 
   //Show the puzzle screen if this is the first time they've pressed the button
-  if (firstTime){
+  if (firstTime) {
     displayPuzzleNew();
     firstTime = false;
     delay(4000);
@@ -234,7 +257,7 @@ void loop() {
   //if we are in range of the target
   if (distanceMeters <= range) {
     //advance to next winner
-    
+
     if (currentPuzzle >= NUM_PUZZLES - 1) {
       //Show winner on screen
       displayWinner();
@@ -244,12 +267,14 @@ void loop() {
       //We don't need to do anything else after this
       digitalWrite(TFT_LED, LOW);
       while (1);
-      
+
     }
     else {
       //wish us congrats
       displayPuzzleSolved(puzzles[currentPuzzle].des);
       currentPuzzle ++;
+      EEPROM.write(PUZZLE_ADDR, currentPuzzle);
+      hintsUsed = EEPROM.read(HINT_ADDR);
       delay(3000);
       displayPuzzleNew();
       //
@@ -259,9 +284,10 @@ void loop() {
   //Otherwise out of range
   else if (hintsUsed < NUM_HINTS) { //use a hint
     hintsUsed++;
+    EEPROM.write(HINT_ADDR, hintsUsed);
     //Show the hint
     displayHintInfo(distanceMeters, direction);
-    
+
   }
   else { //we've run out of hints
     int maxPuzzles = NUM_PUZZLES - 1;
@@ -273,7 +299,7 @@ void loop() {
       displayOutOfHint();
     }
   }
-  
+
 
 
   //wait for 5 seconds
@@ -294,10 +320,10 @@ void displayGPSWait() {
   tft.fillScreen(ILI9341_BLACK);
   tft.setCursor(10, 70);
   tft.println("Doing Magic");
-  tft.setCursor(20, TFT_CY+50);
+  tft.setCursor(20, TFT_CY + 50);
   tft.setFont(Arial_16);
   tft.println("Please take outside");
-  
+
   digitalWrite(TFT_LED, HIGH);
 
 }
@@ -319,14 +345,14 @@ void displayGPSInfo() {
   tft.setFont(Arial_12);
   tft.setCursor(10, 120);
   tft.println(gps.location.lng(), 9);
-  
+
   digitalWrite(TFT_LED, HIGH);
 }
 
-void displayOutOfHint(){
+void displayOutOfHint() {
   tft.setFont(Arial_32);
   tft.fillScreen(ILI9341_BLACK);
-  tft.setCursor(TFT_CX-70, 40);
+  tft.setCursor(TFT_CX - 70, 40);
   tft.println("OH NO!");
 
   tft.setFont(Arial_16);
@@ -340,7 +366,7 @@ void displayHintInfo(double distance, String direction) {
   tft.fillScreen(ILI9341_BLACK);
   //Show the direction
   tft.setFont(Arial_48);
-  tft.setCursor(TFT_CX - stringWidth(direction,48)/2, TFT_CY);
+  tft.setCursor(TFT_CX - stringWidth(direction, 48) / 2, TFT_CY);
   tft.println(direction);
 
   int feetTo = distance * METERS_TO_FEET;
@@ -348,12 +374,12 @@ void displayHintInfo(double distance, String direction) {
   tft.setFont(Arial_32);
   //tft.print(distance);
   tft.setCursor(40, 40);
-  if (feetTo < 3000){
+  if (feetTo < 3000) {
     tft.print(feetTo);
     tft.print(" ft");
   }
-  else{
-    tft.print(milesTo,2);
+  else {
+    tft.print(milesTo, 2);
     tft.print(" mi");
   }
   //
@@ -366,11 +392,11 @@ void displayHintInfo(double distance, String direction) {
   digitalWrite(TFT_LED, HIGH);
 }
 
-int stringWidth(String s, int size){
+int stringWidth(String s, int size) {
   return s.length() * (size);
 }
 
-void displayPuzzleSolved(String des){
+void displayPuzzleSolved(String des) {
   tft.fillScreen(ILI9341_BLACK);
   //Show the direction
   tft.setFont(Arial_40);
@@ -380,13 +406,13 @@ void displayPuzzleSolved(String des){
   tft.print("to the");
 
   tft.setFont(Arial_24);
-  tft.setCursor(TFT_CX - stringWidth(des,24)/2, TFT_CY+20);
+  tft.setCursor(TFT_CX - stringWidth(des, 24) / 2, TFT_CY + 20);
   tft.print(des);
 
   digitalWrite(TFT_LED, HIGH);
 }
 
-void displayPuzzleNew(){
+void displayPuzzleNew() {
   tft.fillScreen(ILI9341_BLACK);
   //Show the puzzle text
   tft.setFont(Arial_32);
@@ -401,7 +427,7 @@ void displayPuzzleNew(){
   digitalWrite(TFT_LED, HIGH);
 }
 
-void displayWinner(){
+void displayWinner() {
   tft.fillScreen(ILI9341_BLACK);
   tft.setFont(Arial_48);
   tft.setCursor(TFT_CX - 105, 30);
@@ -421,15 +447,15 @@ void unlock() {
   delay(15);
   latchServo.write(90);
   delay(1000);
-   
-  digitalWrite(SERVO_ON,LOW);
+
+  digitalWrite(SERVO_ON, LOW);
 }
 void lock() {
   digitalWrite(SERVO_ON, HIGH);
   latchServo.write(0);
   delay(1000);
-   
-  digitalWrite(SERVO_ON,LOW);
+
+  digitalWrite(SERVO_ON, LOW);
 }
 /*
 Updates the GPS Data
