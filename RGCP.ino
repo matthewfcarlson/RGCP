@@ -1,4 +1,3 @@
-#include <Snooze.h>
 #include <EEPROM.h>
 #include <Servo.h>
 #include <ILI9341_t3.h>
@@ -39,13 +38,12 @@ ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCLK, TFT_MIS
 Servo latchServo;   // create servo object to control a servo 
 int   latchPos  = 0; // variable to store the servo position 
 #define SERVO_CONTROL 4
-#define SERVO_ONOFF   3
+#define SERVO_ON  5
+
 
 //Front button
-#define HINT_BTN   5
-
-//Sleeping configuartion
-SnoozeBlock sleepconfig;
+#define UNLOCK_SWITCH 1
+#define HINT_BTN   3
 
 //EEPROM
 #define DATA_YEAR 1
@@ -81,7 +79,7 @@ int currentPuzzle = 0;
 #define NUM_PUZZLES 3
 struct Puzzle puzzles[NUM_PUZZLES];
 
-
+bool newGPSData = false;
 void setup() {
   //FIRST PUZZLE
   puzzles[0].lat = 0.0;
@@ -107,35 +105,42 @@ void setup() {
   latchServo.attach(SERVO_CONTROL);  // attaches the servo
   unlock();
 
-  pinMode(3, INPUT_PULLUP);
-  pinMode(2, INPUT_PULLUP);
+  pinMode(HINT_BTN, INPUT_PULLUP);
+  pinMode(UNLOCK_SWITCH, INPUT_PULLUP);
   pinMode(TFT_LED, OUTPUT);
-  sleepconfig.pinMode(HINT_BTN, INPUT_PULLUP, RISING);//pin, mode, type
+  pinMode(SERVO_ON, OUTPUT);
+  digitalWrite(TFT_LED,HIGH);
 
 
   currentPuzzle = EEPROM.read(PUZZLE_ADDR);
   hintsUsed = EEPROM.read(HINT_ADDR);
-  delay(5000);
-  lock();
-  
-  Snooze.sleep( sleepconfig );
+  displayGPSWait();
+  digitalWrite(TFT_LED,HIGH);
+  while (!newGPSData){
+    updateGPSData(); 
+    //Check if our fix is valid
+  }
 
+  while (!gpsHasFix){
+    updateGPSData(); 
+    if (gps.location.isValid()) gpsHasFix = true;
+  }
+  digitalWrite(TFT_LED,LOW);
+  
+  lock();  
 
 }
 
-bool newGPSData = false;
+
 
 
 void setupTFT()
 {
   tft.begin();
-  tft.setRotation(3);
+  tft.setRotation(2);
   tft.fillScreen(ILI9341_BLACK);
   tft.setTextColor(ILI9341_WHITE);
   tft.setFont(Arial_12);
-  //tft.setTextSize(3);
-  tft.setCursor(40, 8);
-  tft.println("Peak Meter");
 }
 double targetLat = 0;
 double targetLng = 0;
@@ -146,26 +151,23 @@ unsigned long start = 0;
 String direction = "N/A";
 //Loop assumes it just woke up
 void loop() {
-  //We just woke up - make sure to refresh our GPS fix
+  
+  digitalWrite(TFT_LED,LOW);
+  
+  while(digitalRead(HINT_BTN) == HIGH){
+    tft.fillScreen(ILI9341_GREEN);
+    delay(5);
+  }
+  digitalWrite(TFT_LED,HIGH);
   gpsHasFix = false;
   newGPSData = false;
+  //unlock();
   Serial.print("Time since GPS last update:");
   Serial.println(gps.location.age());
   //Get new GPS data
-  while (!newGPSData){
-    updateGPSData(); 
-    //Check if our fix is valid
-    if (newGPSData){
-      gpsHasFix = true;
-      
-    }
-  }
-
-  while (!gpsHasFix){
-    updateGPSData(); 
-    
-  }
-
+  
+ 
+  
   targetLat = puzzles[currentPuzzle].lat;
   targetLng = puzzles[currentPuzzle].lon;
 
@@ -189,7 +191,7 @@ void loop() {
 
 
   //Turn on the screen
-  digitalWrite(TFT_LED, HIGH);
+  digitalWrite(TFT_LED, LOW);
   start = millis();
 
   //if we are in range of the target
@@ -223,24 +225,41 @@ void loop() {
   Serial.println();
 
   //wait for 5 seconds
-  delay(5000);
+  //delay(5000);
+  delay(2000);
 
   //turn of screen backlight
-  digitalWrite(TFT_LED, LOW);
+  digitalWrite(TFT_LED, HIGH);
+  delay(500);
   //go back to sleep
-  Snooze.sleep( sleepconfig );
+  //Snooze.sleep( sleepconfig );
+}
+
+void displayGPSWait(){
+  tft.setFont(Arial_32);
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setCursor(0, 0);
+  tft.println("Looking for Signal...");
+  
 }
 
 void displayGPSInfo(){
+  tft.setFont(Arial_24);
   tft.fillScreen(ILI9341_BLACK);
   tft.setCursor(0, 0);
   tft.println("Latitude");
-  tft.setCursor(40, 40);
-  tft.println(gps.location.lat());
-  tft.setCursor(80, 80);
+  
+  tft.setFont(Arial_12);
+  tft.setCursor(10, 40);
+  tft.println(gps.location.lat(),9);
+  
+  tft.setFont(Arial_24);
+  tft.setCursor(0, 80);
   tft.println("Longitude");
-  tft.setCursor(80, 80);
-  tft.println(gps.location.lng());
+
+  tft.setFont(Arial_12);
+  tft.setCursor(10, 120);
+  tft.println(gps.location.lng(),9);
 }
 
 void displayHintInfo(double distance, String direction){
@@ -256,10 +275,12 @@ void displayHintInfo(double distance, String direction){
 }
 
 void unlock(){
-  latchServo.write(0);
+  digitalWrite(SERVO_ON,HIGH);
+  latchServo.write(90);
 }
 void lock(){
-  latchServo.write(180);
+  digitalWrite(SERVO_ON,HIGH);
+  latchServo.write(0);
 }
 /*
 Serial.println(gps.location.lat(), 6); // Latitude in degrees (double)
