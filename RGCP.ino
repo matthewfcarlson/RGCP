@@ -83,7 +83,7 @@ int currentPuzzle = 0;
 
 //TAYLOR THIS IS THE STUFF YOU WANT TO MODIFY
 #define NUM_HINTS  50
-#define NUM_PUZZLES 4
+#define NUM_PUZZLES 5
 //HEAD TO THE NEXT INSTRUCTION
 
 struct Puzzle puzzles[NUM_PUZZLES];
@@ -92,33 +92,34 @@ struct Puzzle puzzles[NUM_PUZZLES];
 void setup() {
   //TAYLOR START HERE AGAIN
   //FIRST PUZZLE 40.245026, -111.646285
-  puzzles[0].lat = 40.245026;
-  puzzles[0].lon = -111.646285;
-  puzzles[0].des = "JDawgs";
+  puzzles[0].lat = 40.2988962457;
+  puzzles[0].lon = -111.657974243;
+  puzzles[0].des = "The River Woods";
   puzzles[0].range = RANGE; //use the default range
 
   //SECOND PUZZLE 40.244503, -111.651225
-  puzzles[1].lat = 40.244503;
-  puzzles[1].lon = -111.651225;
-  puzzles[1].des = "Duck Pond";
+  puzzles[1].lat = 40.263893127;
+  puzzles[1].lon = -111.63998840;
+  puzzles[1].des = "Provo Temple";
   puzzles[1].range = RANGE; //use the default range
 
-  //THIRD PUZZLE
-  //40.245026, -111.646285
-  puzzles[2].lat = 40.238986969;
-  puzzles[2].lon = -111.645584106;
-  puzzles[2].des = "Home";
+  //THIRD PUZZLE 40.245026, -111.646285
+  puzzles[2].lat = 40.25714113;
+  puzzles[2].lon = -111.660469055;
+  puzzles[2].des = "The Cocoa Bean";
   puzzles[2].range = RANGE; //use the default range
 
   //FOURTH PUZZLE 40.234725, -111.637950
-  //40.187421, -111.639565
-  puzzles[3].lat = 40.234725;
-  puzzles[3].lon = -111.637950;
-  puzzles[3].lat = 40.1874215;
-  puzzles[3].lon = -111.6399565;
+  puzzles[3].lat = 40.234592438;
+  puzzles[3].lon = -111.638908386;
+  puzzles[3].des = "Peaks Ice Rink";
+  puzzles[3].range = RANGE; //use the default range
 
-  puzzles[3].des = "Random place";
-  puzzles[3].range = 50000;//RANGE;
+  //FIFTH PUZZLE 40.234725, -111.637950
+  puzzles[4].lat = 40.267173767;
+  puzzles[4].lon = -111.636856079;
+  puzzles[4].des = "Rock Canyon Park";
+  puzzles[4].range = RANGE; //use the default range
 
   //YOU'RE GOOD NOW
 
@@ -128,8 +129,8 @@ void setup() {
   setupTFT();
 
   //RESTORE STATE
-  currentPuzzle = EEPROM.read(PUZZLE_ADDR);
-  hintsUsed = EEPROM.read(HINT_ADDR);
+  //currentPuzzle = EEPROM.read(PUZZLE_ADDR);
+  //hintsUsed = EEPROM.read(HINT_ADDR);
 
 
   pinMode(HINT_BTN, INPUT_PULLUP);
@@ -303,7 +304,7 @@ void loop() {
 
 
   //wait for 5 seconds
-  delay(5000);
+  delay(7300);
 
   //turn off screen backlight
   digitalWrite(TFT_LED, LOW);
@@ -431,7 +432,10 @@ void displayWinner() {
   tft.fillScreen(ILI9341_BLACK);
   tft.setFont(Arial_48);
   tft.setCursor(TFT_CX - 105, 30);
-  tft.print("I LOVE");
+  tft.print("I ");
+  tft.setTextColor(ILI9341_RED);
+  tft.print("LOVE");
+  tft.setTextColor(ILI9341_WHITE);
   tft.setCursor(TFT_CX - 80, TFT_CY - 30);
   tft.print("YOU");
   tft.setCursor(TFT_CX - 105, TFT_HEIGHT - 70);
